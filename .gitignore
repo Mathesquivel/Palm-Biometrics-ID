@@ -14,8 +14,8 @@ usuarios.db
 # Modelo CNN (arquivo binário grande ~88MB)
 modelo_cnn.h5
 
-# Detector treinado (gerado localmente)
-detector_mao.xml
+# Ambiente virtual Pi Zero
+pi_zero/venv/
 
 # Versões antigas e experimentos
 Antigos/

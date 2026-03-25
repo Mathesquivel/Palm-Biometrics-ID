@@ -1,42 +1,103 @@
-from picamera2 import Picamera2, Preview
+"""
+Camera client (PC) — Palm Biometrics ID
+========================================
+Conecta-se ao servidor Flask no Raspberry Pi Zero via HTTP.
+Mantém a mesma API da versão original (Picamera2) para compatibilidade total
+com app.py, main.py e interface.py — nenhum desses arquivos precisa mudar.
+
+Fluxo:
+  1. start() → inicia thread de fundo que busca frames continuamente
+  2. capture_array() → retorna o frame mais recente (numpy BGR)
+  3. stop() / close() → encerra a thread
+"""
+
 import cv2
+import time
 import threading
 import numpy as np
+import requests
 
-def setup_camera():
-    picam2 = Picamera2()
-    config = picam2.create_preview_configuration(main={"size": (2592, 1944)})
-    config["controls"]["ExposureTime"] = 20000  # Valor inicial
-    config["controls"]["AnalogueGain"] = 1.0
-    picam2.configure(config)
-    return picam2
+from config import PI_ZERO_URL, TIMEOUT_CONNECT, TIMEOUT_READ, JPEG_QUALITY
 
-def adjust_exposure(picam2, img):
-    mean_intensity = np.mean(img)
-    current_exposure = picam2.camera_controls["ExposureTime"].value
-    if mean_intensity > 180:  # Reduzir se muito brilhante
-        new_exposure = max(5000, current_exposure - 1000)
-        picam2.set_controls({"ExposureTime": new_exposure})
-    elif mean_intensity < 70:  # Aumentar se muito escuro
-        new_exposure = min(30000, current_exposure + 1000)
-        picam2.set_controls({"ExposureTime": new_exposure})
-    return picam2.capture_array()
 
-def start_preview(picam2):
-    def preview_loop():
-        cv2.namedWindow("PalmTech Preview", cv2.WINDOW_NORMAL)
-        while True:
-            frame = picam2.capture_array()
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            cv2.imshow("PalmTech Preview", gray)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        cv2.destroyAllWindows()
+class PiZeroCamera:
+    """
+    Wrapper que imita a API da Picamera2, mas busca frames via HTTP
+    do servidor Flask rodando no Raspberry Pi Zero.
+    """
 
-    thread = threading.Thread(target=preview_loop, daemon=True)
-    thread.start()
+    def __init__(self):
+        self._latest_frame: np.ndarray = np.zeros((960, 1280, 3), dtype=np.uint8)
+        self._lock    = threading.Lock()
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._session = requests.Session()
+
+    # ── API pública ────────────────────────────────────────────────────────────
+
+    def start(self):
+        """Inicia thread de captura contínua em background."""
+        self._running = True
+        self._thread = threading.Thread(target=self._fetch_loop, daemon=True)
+        self._thread.start()
+
+    def capture_array(self) -> np.ndarray:
+        """
+        Retorna o frame BGR mais recente como numpy array.
+        Idêntico ao comportamento de Picamera2.capture_array().
+        """
+        with self._lock:
+            return self._latest_frame.copy()
+
+    def stop(self):
+        """Para a thread de captura."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def close(self):
+        self.stop()
+        self._session.close()
+
+    # ── Thread interna ─────────────────────────────────────────────────────────
+
+    def _fetch_loop(self):
+        url = f"{PI_ZERO_URL}/frame?quality={JPEG_QUALITY}"
+        while self._running:
+            try:
+                resp = self._session.get(
+                    url, timeout=(TIMEOUT_CONNECT, TIMEOUT_READ)
+                )
+                if resp.status_code == 200:
+                    arr   = np.frombuffer(resp.content, np.uint8)
+                    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        with self._lock:
+                            self._latest_frame = frame
+            except requests.exceptions.ConnectionError:
+                print("[camera] Pi Zero não encontrado — tentando novamente...")
+                time.sleep(1)
+            except Exception as e:
+                print(f"[camera] Erro: {e}")
+                time.sleep(0.2)
+
+
+# ── Funções de compatibilidade (mesma assinatura da versão Pi) ─────────────────
+
+_cam: PiZeroCamera | None = None
+
+
+def setup_camera() -> PiZeroCamera:
+    global _cam
+    _cam = PiZeroCamera()
+    return _cam
+
+
+def start_preview(picam2: PiZeroCamera):
+    """Inicia thread de captura. O preview visual é gerido pela interface."""
     picam2.start()
 
-def stop_preview(picam2):
-    picam2.stop_preview()
+
+def stop_preview(picam2: PiZeroCamera):
+    picam2.stop()
     picam2.close()

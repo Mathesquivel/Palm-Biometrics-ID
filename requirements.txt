@@ -1,4 +1,4 @@
-picamera2
 opencv-python
 numpy
-RPi.GPIO
+PyQt5
+requests
