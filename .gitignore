@@ -1,0 +1,48 @@
+# Ambiente virtual
+palm_env/
+
+# Dados pessoais / biométricos
+USUARIOS/
+samples/
+dataset/
+data/imagens/
+Downloads/
+
+# Banco de dados com dados de usuários
+usuarios.db
+
+# Modelo CNN (arquivo binário grande ~88MB)
+modelo_cnn.h5
+
+# Detector treinado (gerado localmente)
+detector_mao.xml
+
+# Versões antigas e experimentos
+Antigos/
+Outros modelos/
+PalmTech/
+jatreinado/
+GPT/
+Arquivos GG/
+imagens_processadas/
+Bookshelf/
+logs/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos comprimidos
+*.zip
+*.7z
+
+# Screenshots
+*.png
+*.jpeg
+*.jpg
+
+# Arquivos temporários
+*.tmp
+*.bak
